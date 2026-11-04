@@ -7,7 +7,6 @@ import {
   currentDayStreak,
   estimate1RM,
   evaluateAchievements,
-  flagPersonalRecords,
   formatDuration,
   longestDayStreak,
   summariseSets,
@@ -17,11 +16,11 @@ import type { Workout } from "../lib/types.ts";
 
 const ex = (id: string, name: string) => ({ id, name, muscle_group: "Legs", equipment: "Barbell", created_by: null });
 
-function workout(id: string, day: string, sets: [string, string, number, number][], extra: Partial<Workout> = {}): Workout {
-  const byEx = new Map<string, { name: string; sets: { reps: number; weight_kg: number }[] }>();
-  for (const [eid, name, weight_kg, reps] of sets) {
+function workout(id: string, day: string, sets: [string, string, number, number, boolean?][], extra: Partial<Workout> = {}): Workout {
+  const byEx = new Map<string, { name: string; sets: { reps: number; weight_kg: number; completed: boolean }[] }>();
+  for (const [eid, name, weight_kg, reps, completed = true] of sets) {
     const e = byEx.get(eid) ?? { name, sets: [] };
-    e.sets.push({ reps, weight_kg });
+    e.sets.push({ reps, weight_kg, completed });
     byEx.set(eid, e);
   }
   const exercises = [...byEx.entries()].map(([eid, e], i) => ({
@@ -29,16 +28,20 @@ function workout(id: string, day: string, sets: [string, string, number, number]
     exercise: ex(eid, e.name),
     rest_seconds: 90,
     notes: "",
-    sets: e.sets.map((s, k) => ({ id: `${id}_${i}_${k}`, is_pr: false, ...s })),
+    sets: e.sets.map((s, k) => ({ id: `${id}_${i}_${k}`, is_pr: false, rest_seconds: 90, ...s })),
   }));
-  const totals = computeTotals(exercises.map((e) => ({ exercise_id: e.exercise.id, rest_seconds: 90, notes: "", sets: e.sets })));
-  return { id, user_id: "u", title: "T", category: "Legs", notes: "", gym: null, started_at: `${day}T10:00:00.000Z`, duration_seconds: 3600, visibility: "public", partners: [], created_at: day, exercises, ...totals, ...extra };
+  const totals = computeTotals(exercises);
+  return {
+    id, user_id: "u", title: "T", category: "Legs", notes: "", gym: null, started_at: `${day}T10:00:00.000Z`, ended_at: `${day}T11:00:00.000Z`,
+    duration_seconds: 3600, visibility: "public", partners: [], created_at: day, exercises,
+    total_sets: totals.total_sets, total_reps: totals.total_reps, total_volume: totals.total_volume, exercise_count: totals.exercise_count, ...extra,
+  };
 }
 
-test("computeTotals ignores empty sets and sums volume", () => {
+test("computeTotals: volume = Σ weight × reps over COMPLETED sets only", () => {
   const t = computeTotals([
-    { exercise_id: "a", rest_seconds: 0, notes: "", sets: [{ reps: 10, weight_kg: 60 }, { reps: 8, weight_kg: 60 }, { reps: 0, weight_kg: 60 }] },
-    { exercise_id: "b", rest_seconds: 0, notes: "", sets: [{ reps: 0, weight_kg: 0 }] },
+    { sets: [{ reps: 10, weight_kg: 60, completed: true }, { reps: 8, weight_kg: 60, completed: true }, { reps: 0, weight_kg: 60, completed: true }, { reps: 10, weight_kg: 100, completed: false }] },
+    { sets: [{ reps: 12, weight_kg: 20, completed: false }] },
   ]);
   assert.deepEqual(t, { exercise_count: 1, total_sets: 2, total_reps: 18, total_volume: 1080 });
 });
@@ -60,22 +63,9 @@ test("personal records pick the heaviest set per exercise", () => {
   assert.equal(prs[0].workout_id, "w2");
 });
 
-test("flagPersonalRecords only flags beaten lifts, not first-time exercises", () => {
-  const history = [workout("w1", "2026-01-01", [["sq", "Squat", 100, 3]])];
-  const { prNames, prSetIndex } = flagPersonalRecords(
-    {
-      title: "", category: "Legs", notes: "", gym: null, started_at: "", duration_seconds: 0, visibility: "public", partner_ids: [],
-      exercises: [
-        { exercise_id: "sq", rest_seconds: 0, notes: "", sets: [{ reps: 5, weight_kg: 95 }, { reps: 2, weight_kg: 102.5 }] },
-        { exercise_id: "rdl", rest_seconds: 0, notes: "", sets: [{ reps: 8, weight_kg: 80 }] },
-      ],
-    },
-    history,
-    (id) => (id === "sq" ? "Squat" : "RDL"),
-  );
-  assert.deepEqual(prNames, ["Squat"]);
-  assert.equal(prSetIndex.get(0), 1);
-  assert.equal(prSetIndex.has(1), false);
+test("incomplete sets never count as personal records", () => {
+  const prs = computePersonalRecords([workout("w1", "2026-01-01", [["sq", "Squat", 90, 5], ["sq", "Squat", 140, 5, false]])]);
+  assert.equal(prs[0].weight_kg, 90);
 });
 
 test("streaks", () => {

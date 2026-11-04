@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, CircleDot, Lock, MapPin, Medal, Send, StickyNote, Trash2, Users } from "lucide-react";
+import { ArrowLeft, CircleDot, Lock, MapPin, Medal, Pencil, Send, StickyNote, Trash2, Users } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMe } from "@/components/providers/auth";
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, EmptyState, Skeleton } from "@/components/ui/misc";
 import { WorkoutStats } from "@/components/workout/workout-summary";
 import { useData } from "@/hooks/use-data";
+import { getActiveWorkout, setActiveWorkout } from "@/lib/active-workout";
 import { data } from "@/lib/data";
 import { estimate1RM, formatVolume, formatWeight } from "@/lib/fitness";
 import { fullDate } from "@/lib/time";
@@ -114,10 +115,11 @@ export default function WorkoutDetailPage() {
                 </thead>
                 <tbody>
                   {e.sets.map((s, i) => (
-                    <tr key={s.id} className="border-t border-line">
+                    <tr key={s.id} className={s.completed ? "border-t border-line" : "border-t border-line opacity-45"} title={s.completed ? undefined : "Not completed — excluded from totals"}>
                       <td className="px-4 py-2 font-semibold text-muted">{i + 1}</td>
                       <td className="tabular py-2 font-semibold">
                         {s.weight_kg ? `${formatWeight(s.weight_kg)} × ${s.reps}` : `${s.reps} reps`}
+                        {!s.completed && <span className="ml-2 text-[10px] font-semibold uppercase text-muted">skipped</span>}
                         {s.is_pr && (
                           <span className="ml-2 inline-flex items-center gap-0.5 rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-bold text-accent-text">
                             <Medal className="size-3" /> PR
@@ -145,6 +147,36 @@ export default function WorkoutDetailPage() {
                 <CircleDot className="size-4" /> Share to story
               </Button>
             </Link>
+            <Button
+              variant="secondary"
+              className="mt-2 w-full"
+              onClick={() => {
+                if (getActiveWorkout() && !confirm("You have a workout in progress. Replace it with this one to edit?")) return;
+                setActiveWorkout({
+                  client_request_id: crypto.randomUUID(),
+                  editing_id: w.id,
+                  ended_at: w.ended_at,
+                  title: w.title,
+                  category: w.category,
+                  notes: w.notes,
+                  gym: w.gym ?? "",
+                  started_at: w.started_at,
+                  visibility: w.visibility,
+                  partner_ids: w.partners.map((p) => p.id),
+                  rest_until: null,
+                  exercises: w.exercises.map((e) => ({
+                    key: crypto.randomUUID(),
+                    exercise: e.exercise,
+                    rest_seconds: e.rest_seconds,
+                    notes: e.notes,
+                    sets: e.sets.map((s) => ({ id: crypto.randomUUID(), reps: s.reps, weight_kg: s.weight_kg, done: s.completed })),
+                  })),
+                });
+                router.push("/workout");
+              }}
+            >
+              <Pencil className="size-4" /> Edit workout
+            </Button>
             <Button
               variant="danger"
               className="mt-2 w-full"

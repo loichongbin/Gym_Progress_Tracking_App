@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { data } from "@/lib/data";
 
 interface State<T> {
@@ -21,6 +21,7 @@ export function useData<T>(fetcher: () => Promise<T>, deps: unknown[] = [], opts
   const [state, setState] = useState<State<T>>({ key: null, error: null });
   const fetcherRef = useRef(fetcher);
   const keyRef = useRef(key);
+  const loadRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
     fetcherRef.current = fetcher;
@@ -37,6 +38,7 @@ export function useData<T>(fetcher: () => Promise<T>, deps: unknown[] = [], opts
         if (alive && keyRef.current === key) setState((s) => ({ ...s, key, error: e instanceof Error ? e.message : "Failed to load" }));
       }
     };
+    loadRef.current = load;
     load();
     const off = opts.live === false ? undefined : data.subscribe(() => void load());
     return () => {
@@ -45,11 +47,15 @@ export function useData<T>(fetcher: () => Promise<T>, deps: unknown[] = [], opts
     };
   }, [key, opts.live]);
 
+  /** Refetch now (e.g. after a realtime event); resolves when the new data is in. */
+  const reload = useCallback(() => loadRef.current(), []);
+
   const fresh = state.key === key;
   const value = fresh || opts.keepPrevious ? state.value : undefined;
   return {
     data: value,
     error: fresh ? state.error : null,
     loading: value === undefined && !(fresh && state.error),
+    reload,
   };
 }

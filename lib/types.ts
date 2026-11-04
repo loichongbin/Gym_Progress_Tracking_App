@@ -1,10 +1,16 @@
-// Domain model shared by every data backend (demo + Supabase).
-// Field names mirror the SQL schema in supabase/migrations/0001_schema.sql.
+// Domain model consumed by the UI. Database rows (see lib/supabase/database.types.ts,
+// generated from supabase/migrations) are mapped into these shapes in lib/services/mappers.ts,
+// so UI components never depend on raw column names.
 
 export type Visibility = "public" | "followers" | "private";
 export type FollowStatus = "accepted" | "pending";
 export type MediaType = "image" | "video";
 
+/**
+ * A user profile. When a profile is embedded in another object (post author, comment
+ * author…) only the public card fields are loaded from the database; the remaining
+ * fields carry safe defaults. Full, privacy-masked profiles come from getProfile().
+ */
 export interface Profile {
   id: string;
   username: string;
@@ -43,6 +49,7 @@ export interface Exercise {
   name: string;
   muscle_group: string;
   equipment: string;
+  description?: string;
   created_by: string | null;
 }
 
@@ -50,6 +57,9 @@ export interface WorkoutSet {
   id: string;
   reps: number;
   weight_kg: number;
+  rest_seconds: number | null;
+  /** Only completed sets count towards totals, volume and PRs. */
+  completed: boolean;
   is_pr: boolean;
 }
 
@@ -70,6 +80,7 @@ export interface Workout {
   notes: string;
   gym: string | null;
   started_at: string;
+  ended_at: string;
   duration_seconds: number;
   total_volume: number;
   total_sets: number;
@@ -81,21 +92,23 @@ export interface Workout {
   created_at: string;
 }
 
-/** Input for saving a finished workout. Totals are computed by the service. */
+/** Input for saving a workout. Totals, duration and PRs are computed by the database. */
 export interface WorkoutInput {
+  /** Idempotency key — retrying the same save never creates a duplicate workout. */
+  client_request_id?: string;
   title: string;
   category: string;
   notes: string;
   gym: string | null;
   started_at: string;
-  duration_seconds: number;
+  ended_at: string;
   visibility: Visibility;
   partner_ids: string[];
   exercises: {
     exercise_id: string;
     rest_seconds: number;
     notes: string;
-    sets: { reps: number; weight_kg: number }[];
+    sets: { reps: number; weight_kg: number; completed: boolean }[];
   }[];
 }
 
@@ -111,15 +124,20 @@ export interface WorkoutTemplate {
 export interface PostMedia {
   id: string;
   type: MediaType;
+  /** Storage object path (or an absolute URL for seeded demo media). */
+  path: string;
+  /** Short-lived signed URL (private bucket) ready to render. */
   url: string;
   width: number | null;
   height: number | null;
 }
 
 export type PostKind = "post" | "achievement" | "checkin";
+export type PostType = "photo" | "video" | "workout" | "text" | "achievement";
 
 export interface Post {
   id: string;
+  post_type: PostType;
   user: Profile;
   caption: string;
   location: string | null;
@@ -147,6 +165,8 @@ export interface PostInput {
   tagged_user_ids: string[];
   kind?: PostKind;
   files: File[];
+  /** Idempotency key so a double-tapped "Share" never creates two posts. */
+  client_request_id?: string;
 }
 
 export interface Comment {
@@ -162,6 +182,7 @@ export interface Comment {
 export interface Story {
   id: string;
   user_id: string;
+  media_path: string | null;
   media_url: string | null;
   media_type: MediaType | null;
   text: string;
@@ -201,7 +222,8 @@ export interface Community {
   created_at: string;
   members_count: number;
   is_member: boolean;
-  my_role: "owner" | "admin" | "member" | null;
+  /** "pending" = request to join a private community awaiting approval. */
+  my_role: "owner" | "admin" | "member" | "pending" | null;
 }
 
 export interface CommunityInput {
@@ -238,6 +260,7 @@ export interface LeaderboardEntry {
 export type NotificationType =
   | "follow"
   | "follow_request"
+  | "follow_accepted"
   | "like"
   | "comment"
   | "reply"

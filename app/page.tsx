@@ -5,11 +5,10 @@ import { Dumbbell, Flame, Heart, Trophy, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { DemoNotice } from "@/components/demo-banner";
 import { Logo } from "@/components/logo";
 import { useAuth } from "@/components/providers/auth";
 import { Media } from "@/components/ui/media";
-import { GYM_PHOTOS } from "@/lib/data/demo/seed";
+import { LANDING_PHOTOS } from "@/lib/marketing";
 
 export default function Landing() {
   const { user, loading } = useAuth();
@@ -49,7 +48,6 @@ export default function Landing() {
             Log in
           </Link>
         </div>
-        <DemoNotice className="mt-5 max-w-md" />
         <div className="mt-10 grid grid-cols-2 gap-3 md:max-w-lg">
           {features.map((f) => (
             <div key={f.title} className="rounded-2xl border border-line bg-surface p-4">
@@ -62,9 +60,9 @@ export default function Landing() {
       </section>
       <section className="relative mt-12 hidden flex-1 md:block">
         <div className="grid grid-cols-2 gap-3">
-          {[0, 4, 9, 2].map((i, k) => (
+          {[0, 1, 2, 3].map((i, k) => (
             <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 * k }} className={k % 2 ? "mt-10" : ""}>
-              <Media url={GYM_PHOTOS[i]} className="aspect-[4/5] w-full rounded-3xl" />
+              <Media url={LANDING_PHOTOS[i]} className="aspect-[4/5] w-full rounded-3xl" />
             </motion.div>
           ))}
         </div>

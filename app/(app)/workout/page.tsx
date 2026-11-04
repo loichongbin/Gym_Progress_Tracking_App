@@ -39,6 +39,7 @@ function startWorkout(category: string, exercises: DraftExercise[] = [], title =
   const hour = new Date().getHours();
   const time = hour < 12 ? "Morning" : hour < 17 ? "Afternoon" : "Evening";
   setActiveWorkout({
+    client_request_id: crypto.randomUUID(),
     title: title || `${time} ${category === "Full Body" ? "Session" : category + " Day"}`,
     category,
     notes: "",
@@ -399,32 +400,52 @@ function ActiveSession({ w, onSaved }: { w: ActiveWorkout; onSaved: (r: SaveResu
   // "Previous" column: sets from the most recent workout containing each exercise.
   const previousFor = useMemo(() => {
     const map = new Map<string, { reps: number; weight_kg: number }[]>();
-    for (const h of history ?? []) for (const e of h.exercises) if (!map.has(e.exercise.id)) map.set(e.exercise.id, e.sets);
+    for (const h of history ?? [])
+      for (const e of h.exercises) {
+        const done = e.sets.filter((s) => s.completed);
+        if (h.id !== w.editing_id && done.length && !map.has(e.exercise.id)) map.set(e.exercise.id, done);
+      }
     return map;
-  }, [history]);
+  }, [history, w.editing_id]);
 
   const patch = (p: Partial<ActiveWorkout>) => setActiveWorkout((x) => (x ? { ...x, ...p } : x));
-  const elapsed = Math.max(0, Math.floor((now - new Date(w.started_at).getTime()) / 1000));
-  const live = computeTotals(w.exercises.map((e) => ({ exercise_id: e.exercise.id, rest_seconds: 0, notes: "", sets: e.sets.filter((s) => s.done).map((s) => ({ reps: Number(s.reps) || 0, weight_kg: Number(s.weight_kg) || 0 })) })));
+  // When editing a saved workout the original end time is kept; otherwise the clock runs.
+  const endMs = w.editing_id && w.ended_at ? new Date(w.ended_at).getTime() : now;
+  const elapsed = Math.max(0, Math.floor((endMs - new Date(w.started_at).getTime()) / 1000));
+  const live = computeTotals(w.exercises.map((e) => ({ sets: e.sets.map((s) => ({ reps: Number(s.reps) || 0, weight_kg: Number(s.weight_kg) || 0, completed: s.done })) })));
   const doneSets = live.total_sets;
 
   const finish = async () => {
     if (doneSets === 0) return toast("Tick off at least one set (✓) before finishing.", "error");
     const pending = w.exercises.reduce((a, e) => a + e.sets.filter((s) => !s.done && s.reps !== "").length, 0);
-    if (pending && !confirm(`${pending} set${pending > 1 ? "s are" : " is"} filled in but not ticked off and won't be saved. Finish anyway?`)) return;
+    if (pending && !confirm(`${pending} set${pending > 1 ? "s are" : " is"} filled in but not ticked off. They'll be saved as incomplete and won't count towards your totals. Finish anyway?`)) return;
     setSaving(true);
     try {
-      const r = await data.saveWorkout({
-        title: w.title,
-        category: w.category,
-        notes: w.notes,
-        gym: w.gym.trim() || null,
-        started_at: w.started_at,
-        duration_seconds: elapsed,
-        visibility: w.visibility,
-        partner_ids: w.partner_ids,
-        exercises: w.exercises.map((e) => ({ exercise_id: e.exercise.id, rest_seconds: e.rest_seconds, notes: e.notes, sets: e.sets.filter((s) => s.done).map((s) => ({ reps: Number(s.reps) || 0, weight_kg: Number(s.weight_kg) || 0 })) })),
-      });
+      const r = await data.saveWorkout(
+        {
+          client_request_id: w.client_request_id,
+          title: w.title,
+          category: w.category,
+          notes: w.notes,
+          gym: w.gym.trim() || null,
+          started_at: w.started_at,
+          ended_at: new Date(endMs).toISOString(),
+          visibility: w.visibility,
+          partner_ids: w.partner_ids,
+          exercises: w.exercises
+            .map((e) => ({
+              exercise_id: e.exercise.id,
+              rest_seconds: e.rest_seconds,
+              notes: e.notes,
+              // Untouched empty rows are dropped; everything else is stored with its completed flag.
+              sets: e.sets
+                .filter((s) => s.done || s.reps !== "" || s.weight_kg !== "")
+                .map((s) => ({ reps: Number(s.reps) || 0, weight_kg: Number(s.weight_kg) || 0, completed: s.done })),
+            }))
+            .filter((e) => e.sets.length),
+        },
+        w.editing_id,
+      );
       setActiveWorkout(null); // clear the draft immediately so it can never be saved twice
       onSaved(r);
     } catch (e) {
@@ -450,8 +471,9 @@ function ActiveSession({ w, onSaved }: { w: ActiveWorkout; onSaved: (r: SaveResu
             {doneSets} sets · {formatVolume(live.total_volume)}
           </div>
           <div className="flex-1" />
+          {w.editing_id && <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent-text">Editing</span>}
           <Button size="sm" onClick={finish} loading={saving}>
-            Finish
+            {w.editing_id ? "Save changes" : "Finish"}
           </Button>
         </div>
       </header>

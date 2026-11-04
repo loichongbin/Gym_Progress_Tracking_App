@@ -28,8 +28,12 @@ export default function CommunityPage() {
   const id = c?.id;
   const { data: posts } = useData(() => (id ? data.getCommunityPosts(id) : Promise.resolve([])), [id]);
   const { data: challenges } = useData(() => (id ? data.listChallenges({ communityId: id }) : Promise.resolve([])), [id]);
-  const { data: board } = useData(() => (id ? data.getCommunityLeaderboard(id) : Promise.resolve([])), [id]);
+  // Private communities only reveal their leaderboard to members (enforced in the database too).
+  const canSeeInside = !!c && (!c.is_private || c.is_member);
+  const { data: board } = useData(() => (id && canSeeInside ? data.getCommunityLeaderboard(id) : Promise.resolve([])), [id, canSeeInside]);
   const { data: members } = useData(() => (id ? data.getCommunityMembers(id) : Promise.resolve([])), [id]);
+  const isAdmin = c?.my_role === "owner" || c?.my_role === "admin";
+  const { data: pending } = useData(() => (id && isAdmin ? data.getPendingMembers(id) : Promise.resolve([])), [id, isAdmin]);
 
   if (loading) return <Skeleton className="h-56 w-full rounded-none" />;
   if (!c) return <EmptyState icon={Users} title="Community not found" />;
@@ -79,9 +83,21 @@ export default function CommunityPage() {
               <Button size="sm" variant="secondary" onClick={() => run(() => data.leaveCommunity(c.id), `Left ${c.name}`)}>
                 Joined ✓
               </Button>
+            ) : c.my_role === "pending" ? (
+              <Button size="sm" variant="secondary" onClick={() => run(() => data.leaveCommunity(c.id), "Request cancelled")}>
+                Requested
+              </Button>
             ) : (
-              <Button size="sm" onClick={() => run(() => data.joinCommunity(c.id), `Welcome to ${c.name}! 🎉`)}>
-                Join community
+              <Button
+                size="sm"
+                onClick={() =>
+                  run(async () => {
+                    const status = await data.joinCommunity(c.id);
+                    return status;
+                  }, c.is_private ? "Request sent — an admin will review it" : `Welcome to ${c.name}! 🎉`)
+                }
+              >
+                {c.is_private ? "Request to join" : "Join community"}
               </Button>
             )}
           </div>
@@ -136,7 +152,32 @@ export default function CommunityPage() {
         </div>
       )}
 
-      {tab === "members" && <div className="py-2">{members?.map((m) => <UserRow key={m.id} user={m} subtitle={m.id === c.created_by ? "Owner" : m.full_name} />)}</div>}
+      {tab === "members" && (
+        <div className="py-2">
+          {isAdmin && (pending?.length ?? 0) > 0 && (
+            <section className="mb-2 border-b border-line pb-2">
+              <h3 className="px-4 py-2 text-sm font-semibold">Requests to join</h3>
+              {pending!.map((m) => (
+                <UserRow
+                  key={m.id}
+                  user={m}
+                  action={
+                    <div className="flex gap-1.5">
+                      <Button size="sm" onClick={() => run(() => data.respondToJoinRequest(c.id, m.id, true), `Approved @${m.username}`)}>
+                        Approve
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => run(() => data.respondToJoinRequest(c.id, m.id, false))}>
+                        Decline
+                      </Button>
+                    </div>
+                  }
+                />
+              ))}
+            </section>
+          )}
+          {members?.map((m) => <UserRow key={m.id} user={m} subtitle={m.id === c.created_by ? "Owner" : m.full_name} />)}
+        </div>
+      )}
     </div>
   );
 }

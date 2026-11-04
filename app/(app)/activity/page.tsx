@@ -18,6 +18,7 @@ import type { AppNotification, NotificationType } from "@/lib/types";
 const COPY: Record<NotificationType, string> = {
   follow: "started following you.",
   follow_request: "requested to follow you.",
+  follow_accepted: "accepted your follow request.",
   like: "liked your post.",
   comment: "commented:",
   reply: "replied to your comment:",
@@ -38,6 +39,7 @@ const ICON: Partial<Record<NotificationType, React.ElementType>> = {
   reply: MessageCircle,
   follow: UserPlus,
   follow_request: UserPlus,
+  follow_accepted: UserPlus,
   tag: Tag,
   mention: Tag,
   community_join: Users,

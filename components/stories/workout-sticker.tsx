@@ -32,13 +32,15 @@ export function WorkoutSticker({ w, compact }: { w: Workout; compact?: boolean }
       {!compact && (
         <ul className="mt-3 space-y-1 border-t border-white/10 pt-3 text-xs">
           {w.exercises.slice(0, 4).map((e) => {
-            const top = e.sets.reduce((m, s) => (s.weight_kg > m.weight_kg ? s : m), e.sets[0]);
+            const done = e.sets.filter((s) => s.completed);
+            if (!done.length) return null;
+            const top = done.reduce((m, s) => (s.weight_kg > m.weight_kg ? s : m), done[0]);
             return (
               <li key={e.id} className="flex justify-between gap-2">
                 <span className="truncate text-white/80">{e.exercise.name}</span>
                 <span className="shrink-0 font-semibold">
                   {top?.weight_kg ? `${top.weight_kg}kg × ` : ""}
-                  {top?.reps} × {e.sets.length}
+                  {top?.reps} × {done.length}
                 </span>
               </li>
             );

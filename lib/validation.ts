@@ -34,3 +34,12 @@ export const exerciseSchema = z.object({
   muscle_group: z.string().min(1),
   equipment: z.string().min(1),
 });
+
+export const newPasswordSchema = z
+  .object({
+    password: z.string().min(8, "At least 8 characters"),
+    confirm: z.string(),
+  })
+  .refine((v) => v.password === v.confirm, { message: "Passwords don't match", path: ["confirm"] });
+
+export const emailSchema = z.object({ email: z.email("Enter a valid email") });

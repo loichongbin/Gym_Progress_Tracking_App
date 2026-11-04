@@ -3,7 +3,6 @@
 import { ArrowLeft, Camera, ChevronRight, Dumbbell, Globe, ImagePlus, Lock, MapPin, Play, Tag, Users, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { DemoNotice } from "@/components/demo-banner";
 import { useMe } from "@/components/providers/auth";
 import { useToast } from "@/components/providers/toast";
 import { PageHeader } from "@/components/shell/app-shell";
@@ -40,6 +39,9 @@ function CreatePostInner() {
   const [communityId, setCommunityId] = useState<string | null>(null);
   const [picker, setPicker] = useState<"tags" | "workout" | null>(null);
   const [posting, setPosting] = useState(false);
+  const [uploaded, setUploaded] = useState(0);
+  // One idempotency key per draft: a retried or double-tapped "Share" can't create two posts.
+  const [requestId] = useState(() => crypto.randomUUID());
 
   const { data: following } = useData(() => data.getFollowing(me.id), [me.id], { live: false });
   const { data: communities } = useData(() => data.listCommunities(), [], { live: false });
@@ -78,9 +80,12 @@ function CreatePostInner() {
 
   const submit = async () => {
     if (!media.length && !caption.trim() && !workout) return toast("Add a photo, video, caption or workout", "error");
+    if (posting) return;
     setPosting(true);
+    setUploaded(0);
     try {
       const post = await data.createPost({
+        client_request_id: requestId,
         caption,
         location: location || null,
         visibility,
@@ -88,7 +93,7 @@ function CreatePostInner() {
         community_id: communityId,
         tagged_user_ids: tagged,
         files: media.map((m) => m.file),
-      });
+      }, setUploaded);
       toast("Posted! Your crew will love this 💪");
       router.replace(`/post/${post.id}`);
     } catch (e) {
@@ -215,9 +220,8 @@ function CreatePostInner() {
           </div>
         </div>
         <Button size="lg" className="w-full" onClick={submit} loading={posting}>
-          Share post
+          {posting && media.length ? `Uploading ${Math.min(uploaded + 1, media.length)}/${media.length}…` : "Share post"}
         </Button>
-        <DemoNotice />
       </div>
       <UserPicker open={picker === "tags"} onClose={() => setPicker(null)} title="Tag friends" selected={tagged} onChange={setTagged} />
       <WorkoutSelect open={picker === "workout"} onClose={() => setPicker(null)} value={workout?.id ?? null} onChange={setWorkout} />

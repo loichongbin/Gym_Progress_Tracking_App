@@ -2,7 +2,7 @@
 
 import { Bookmark, Dumbbell, Search } from "lucide-react";
 import Link from "next/link";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FriendCheckIns } from "@/components/home/checkins";
 import { SuggestionsCarousel, SuggestionsList } from "@/components/home/suggestions";
 import { Logo } from "@/components/logo";
@@ -14,9 +14,9 @@ import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, EmptyState, Skeleton, Spinner } from "@/components/ui/misc";
 import { ChallengeMini } from "@/components/community/challenge-card";
-import { DemoNotice } from "@/components/demo-banner";
 import { useData } from "@/hooks/use-data";
-import { data } from "@/lib/data";
+import { data, realtime } from "@/lib/data";
+import type { Post } from "@/lib/types";
 
 const PAGE = 8;
 
@@ -32,21 +32,71 @@ function PostSkeleton() {
   );
 }
 
+/** Home feed: first page is live (refetched on changes); older pages load by cursor. */
+function useFeed() {
+  const { data: first, loading, reload } = useData(() => data.getFeed({ limit: PAGE }), []);
+  const [older, setOlder] = useState<Post[]>([]);
+  const [exhausted, setExhausted] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const posts = useMemo(() => {
+    const seen = new Set<string>();
+    return [...(first ?? []), ...older].filter((p) => !seen.has(p.id) && seen.add(p.id));
+  }, [first, older]);
+  const hasMore = !exhausted && (first?.length ?? 0) >= PAGE;
+
+  const loadMore = useCallback(async () => {
+    const last = posts.at(-1);
+    if (!last || loadingMore || exhausted) return;
+    setLoadingMore(true);
+    try {
+      const page = await data.getFeed({ before: { created_at: last.created_at, id: last.id }, limit: PAGE });
+      setOlder((o) => [...o, ...page]);
+      if (page.length < PAGE) setExhausted(true);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [posts, loadingMore, exhausted]);
+
+  const refreshAll = useCallback(async () => {
+    setOlder([]);
+    setExhausted(false);
+    await reload();
+  }, [reload]);
+
+  return { posts: first ? posts : undefined, loading, hasMore, loadMore, refreshAll };
+}
+
 export default function HomePage() {
   const me = useMe();
-  const [limit, setLimit] = useState(PAGE);
-  const { data: posts, loading } = useData(() => data.getFeed({ limit }), [limit], { keepPrevious: true });
+  const { posts, loading, hasMore, loadMore, refreshAll } = useFeed();
   const { data: challenges } = useData(() => data.listChallenges(), []);
+  const { data: followingIds } = useData(() => data.getFollowingIds().then((s) => [...s]), []);
+  const [live, setLive] = useState<Record<string, { likes: number; comments: number }>>({});
+  const [newPosts, setNewPosts] = useState(false);
   const sentinel = useRef<HTMLDivElement>(null);
-  const hasMore = (posts?.length ?? 0) >= limit;
 
   useEffect(() => {
     const el = sentinel.current;
     if (!el || !hasMore) return;
-    const io = new IntersectionObserver((entries) => entries[0].isIntersecting && setLimit((l) => l + PAGE), { rootMargin: "800px" });
+    const io = new IntersectionObserver((entries) => entries[0].isIntersecting && loadMore(), { rootMargin: "800px" });
     io.observe(el);
     return () => io.disconnect();
-  }, [hasMore, posts?.length]);
+  }, [hasMore, loadMore]);
+
+  // Realtime: live like/comment counters for the posts on screen (one filtered channel).
+  const idsKey = (posts ?? []).slice(0, 100).map((p) => p.id).join(",");
+  useEffect(() => {
+    if (!idsKey) return;
+    return realtime.subscribeToPostCounters(idsKey.split(","), (id, likes, comments) => setLive((l) => ({ ...l, [id]: { likes, comments } })));
+  }, [idsKey]);
+
+  // Realtime: new posts from people you follow → "New posts" pill.
+  const followKey = (followingIds ?? []).join(",");
+  useEffect(() => {
+    if (!followKey) return;
+    return realtime.subscribeToNewPosts(followKey.split(","), () => setNewPosts(true));
+  }, [followKey]);
 
   return (
     <>
@@ -70,6 +120,20 @@ export default function HomePage() {
             <StoryTray />
           </div>
           <FriendCheckIns />
+          {newPosts && (
+            <div className="sticky top-16 z-20 flex justify-center">
+              <button
+                onClick={async () => {
+                  setNewPosts(false);
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                  await refreshAll();
+                }}
+                className="mt-2 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-accent-fg shadow-xl"
+              >
+                ↑ New posts
+              </button>
+            </div>
+          )}
           {loading && [0, 1].map((i) => <PostSkeleton key={i} />)}
           {posts?.length === 0 && (
             <EmptyState
@@ -85,7 +149,7 @@ export default function HomePage() {
           )}
           {posts?.map((p, i) => (
             <Fragment key={p.id}>
-              <PostCard post={p} />
+              <PostCard post={p} live={live[p.id]} />
               {i === 2 && <SuggestionsCarousel />}
             </Fragment>
           ))}
@@ -107,7 +171,6 @@ export default function HomePage() {
               <div className="truncate text-sm text-muted">{me.full_name}</div>
             </div>
           </Link>
-          <DemoNotice />
           <Card className="p-4">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-muted">Suggested for you</h3>

@@ -1,25 +1,12 @@
 "use client";
 
 import { Dumbbell } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { cn } from "@/lib/cn";
-import { resolveIdbUrl } from "@/lib/data/demo/media-store";
 
-/** Resolves demo `idb:` URLs to object URLs; passes other URLs through. */
+/** Media URLs are ready to render (public URLs or signed URLs from the service layer). */
 export function useResolvedUrl(url: string | null | undefined) {
-  const [resolved, setResolved] = useState<{ from: string; to: string | null } | null>(null);
-  const isIdb = !!url && url.startsWith("idb:");
-  useEffect(() => {
-    if (!url || !url.startsWith("idb:")) return;
-    let alive = true;
-    resolveIdbUrl(url).then((to) => alive && setResolved({ from: url, to }));
-    return () => {
-      alive = false;
-    };
-  }, [url]);
-  if (!url) return null;
-  if (!isIdb) return url;
-  return resolved?.from === url ? resolved.to : null;
+  return url || null;
 }
 
 /** Deterministic, on-brand placeholder when an image is missing or fails to load. */

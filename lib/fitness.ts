@@ -1,7 +1,8 @@
-// Pure fitness calculations, shared by both data backends and the UI.
-// No I/O in here — everything is deterministic and unit-tested (tests/fitness.test.ts).
+// Pure fitness calculations used by the UI (live totals, charts, PR lists).
+// The database is authoritative for stored totals, PR flags and achievements; these
+// helpers apply the same rules client-side. Unit-tested in tests/fitness.test.ts.
 
-import type { ChallengeMetric, Exercise, PersonalRecord, Workout, WorkoutInput } from "./types";
+import type { ChallengeMetric, Exercise, PersonalRecord, Workout } from "./types";
 
 export const WORKOUT_CATEGORIES = [
   "Push",
@@ -38,13 +39,14 @@ export interface Totals {
   total_volume: number;
 }
 
-export function computeTotals(exercises: WorkoutInput["exercises"]): Totals {
+/** Live totals for the logger UI. Mirrors the database rule: only COMPLETED sets with reps count. */
+export function computeTotals(exercises: { sets: { reps: number; weight_kg: number; completed?: boolean }[] }[]): Totals {
   let total_sets = 0;
   let total_reps = 0;
   let total_volume = 0;
   let exercise_count = 0;
   for (const ex of exercises) {
-    const done = ex.sets.filter((s) => s.reps > 0);
+    const done = ex.sets.filter((s) => s.completed !== false && s.reps > 0);
     if (done.length) exercise_count++;
     for (const s of done) {
       total_sets++;
@@ -69,7 +71,7 @@ export function computePersonalRecords(workouts: Workout[]): PersonalRecord[] {
   for (const w of sorted) {
     for (const we of w.exercises) {
       for (const s of we.sets) {
-        if (s.reps <= 0 || s.weight_kg <= 0) continue;
+        if (!s.completed || s.reps <= 0 || s.weight_kg <= 0) continue;
         const cur = best.get(we.exercise.id);
         if (!cur || s.weight_kg > cur.weight_kg || (s.weight_kg === cur.weight_kg && s.reps > cur.reps)) {
           best.set(we.exercise.id, {
@@ -85,42 +87,6 @@ export function computePersonalRecords(workouts: Workout[]): PersonalRecord[] {
     }
   }
   return [...best.values()].sort((a, b) => b.weight_kg - a.weight_kg);
-}
-
-/**
- * Marks sets in a new workout that beat the previous best weight for that exercise.
- * Returns the names of exercises with a new PR. Only the heaviest set per exercise is flagged.
- */
-export function flagPersonalRecords(
-  input: WorkoutInput,
-  history: Workout[],
-  exerciseName: (id: string) => string,
-): { prSetIndex: Map<number, number>; prNames: string[] } {
-  const prev = new Map<string, number>();
-  for (const w of history)
-    for (const we of w.exercises)
-      for (const s of we.sets)
-        if (s.reps > 0) prev.set(we.exercise.id, Math.max(prev.get(we.exercise.id) ?? 0, s.weight_kg));
-
-  const prSetIndex = new Map<number, number>();
-  const prNames: string[] = [];
-  input.exercises.forEach((ex, exIdx) => {
-    let bestIdx = -1;
-    let bestWeight = 0;
-    ex.sets.forEach((s, i) => {
-      if (s.reps > 0 && s.weight_kg > bestWeight) {
-        bestWeight = s.weight_kg;
-        bestIdx = i;
-      }
-    });
-    // A first-ever log of an exercise is not a "PR" — there is nothing to beat yet.
-    const previous = prev.get(ex.exercise_id);
-    if (bestIdx >= 0 && previous !== undefined && bestWeight > previous) {
-      prSetIndex.set(exIdx, bestIdx);
-      prNames.push(exerciseName(ex.exercise_id));
-    }
-  });
-  return { prSetIndex, prNames };
 }
 
 // ---------------------------------------------------------------------------
@@ -238,7 +204,7 @@ export function exerciseProgression(workouts: Workout[], exerciseId: string) {
     .flatMap((w) => {
       const we = w.exercises.find((e) => e.exercise.id === exerciseId);
       if (!we) return [];
-      const top = we.sets.reduce((m, s) => (s.reps > 0 && s.weight_kg > m.weight_kg ? s : m), { weight_kg: 0, reps: 0 });
+      const top = we.sets.reduce((m, s) => (s.completed && s.reps > 0 && s.weight_kg > m.weight_kg ? s : m), { weight_kg: 0, reps: 0 });
       if (!top.weight_kg) return [];
       return [
         {
@@ -360,8 +326,8 @@ export function formatWeight(kg: number): string {
 }
 
 /** Summarise a workout exercise as "60kg × 10 × 3" (top weight, most common reps, set count). */
-export function summariseSets(sets: { reps: number; weight_kg: number }[]): string {
-  const done = sets.filter((s) => s.reps > 0);
+export function summariseSets(sets: { reps: number; weight_kg: number; completed?: boolean }[]): string {
+  const done = sets.filter((s) => s.completed !== false && s.reps > 0);
   if (!done.length) return "—";
   const sameWeight = done.every((s) => s.weight_kg === done[0].weight_kg);
   const sameReps = done.every((s) => s.reps === done[0].reps);

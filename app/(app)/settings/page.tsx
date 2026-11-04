@@ -1,12 +1,11 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Camera, Database, LogOut, Moon, RotateCcw, ShieldCheck, Sun } from "lucide-react";
+import { Camera, KeyRound, LogOut, Mail, Moon, ShieldCheck, Sun, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { DemoNotice } from "@/components/demo-banner";
 import { useMe } from "@/components/providers/auth";
 import { useTheme } from "@/components/providers/theme";
 import { useAction, useToast } from "@/components/providers/toast";
@@ -17,11 +16,11 @@ import { Button } from "@/components/ui/button";
 import { Card, Field, inputClass, Pills, Switch } from "@/components/ui/misc";
 import { useData } from "@/hooks/use-data";
 import { setActiveWorkout } from "@/lib/active-workout";
-import { data, isDemoMode } from "@/lib/data";
-import { DemoDataService } from "@/lib/data/demo";
+import { data } from "@/lib/data";
 import { MediaError, validateMedia } from "@/lib/media";
 import type { Profile, ProfileUpdate, Visibility } from "@/lib/types";
-import { profileSchema } from "@/lib/validation";
+import { emailSchema, newPasswordSchema, profileSchema } from "@/lib/validation";
+import { Sheet } from "@/components/ui/sheet";
 
 type Values = z.infer<typeof profileSchema>;
 
@@ -177,28 +176,8 @@ export default function SettingsPage() {
           </div>
         </Section>
 
-        <Section title="Data & backend" icon={Database}>
-          {isDemoMode ? (
-            <div className="space-y-3">
-              <DemoNotice />
-              <p className="text-xs text-muted">
-                To go live, set <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> and run the migrations in <code>supabase/migrations</code>. See the README.
-              </p>
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  if (!confirm("Reset all demo data? Your demo posts, workouts and uploads in this browser will be erased.")) return;
-                  setActiveWorkout(null);
-                  if (data instanceof DemoDataService) await data.reset();
-                  router.replace("/login");
-                }}
-              >
-                <RotateCcw className="size-4" /> Reset demo data
-              </Button>
-            </div>
-          ) : (
-            <p className="text-sm text-muted">Connected to Supabase. Your data is protected by row-level security.</p>
-          )}
+        <Section title="Account" icon={KeyRound}>
+          <AccountSettings me={me} />
         </Section>
 
         <Button
@@ -206,6 +185,7 @@ export default function SettingsPage() {
           size="lg"
           className="w-full"
           onClick={async () => {
+            setActiveWorkout(null);
             await data.signOut();
             router.replace("/login");
           }}
@@ -213,6 +193,107 @@ export default function SettingsPage() {
           <LogOut className="size-4" /> Log out
         </Button>
       </div>
+    </div>
+  );
+}
+
+function AccountSettings({ me }: { me: Profile }) {
+  const toast = useToast();
+  const router = useRouter();
+  const { data: account } = useData(() => data.getAccountEmail(), []);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const emailForm = useForm<z.infer<typeof emailSchema>>({ resolver: zodResolver(emailSchema) });
+  const pwForm = useForm<z.infer<typeof newPasswordSchema>>({ resolver: zodResolver(newPasswordSchema) });
+
+  return (
+    <div className="space-y-6">
+      <form
+        className="space-y-2"
+        noValidate
+        onSubmit={emailForm.handleSubmit(async (v) => {
+          try {
+            await data.updateEmail(v.email);
+            emailForm.reset();
+            toast(`Confirmation link sent to ${v.email}`, "info");
+          } catch (e) {
+            emailForm.setError("email", { message: e instanceof Error ? e.message : "Couldn't change email" });
+          }
+        })}
+      >
+        <Field label={`Email${account?.email ? ` · currently ${account.email}` : ""}`} error={emailForm.formState.errors.email?.message} hint={account?.pendingEmail ? `Waiting for confirmation of ${account.pendingEmail}` : undefined}>
+          <div className="flex gap-2">
+            <input {...emailForm.register("email")} type="email" placeholder="new@email.com" className={inputClass} />
+            <Button type="submit" variant="secondary" loading={emailForm.formState.isSubmitting}>
+              <Mail className="size-4" /> Change
+            </Button>
+          </div>
+        </Field>
+      </form>
+
+      <form
+        className="space-y-3"
+        noValidate
+        onSubmit={pwForm.handleSubmit(async (v) => {
+          try {
+            await data.updatePassword(v.password);
+            pwForm.reset();
+            toast("Password updated");
+          } catch (e) {
+            pwForm.setError("password", { message: e instanceof Error ? e.message : "Couldn't update password" });
+          }
+        })}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="New password" error={pwForm.formState.errors.password?.message}>
+            <input {...pwForm.register("password")} type="password" autoComplete="new-password" className={inputClass} />
+          </Field>
+          <Field label="Confirm new password" error={pwForm.formState.errors.confirm?.message}>
+            <input {...pwForm.register("confirm")} type="password" autoComplete="new-password" className={inputClass} />
+          </Field>
+        </div>
+        <Button type="submit" variant="secondary" loading={pwForm.formState.isSubmitting}>
+          Update password
+        </Button>
+      </form>
+
+      <div className="rounded-xl border border-danger/30 p-4">
+        <div className="text-sm font-semibold text-danger">Delete account</div>
+        <p className="mt-1 text-xs text-muted">Permanently deletes your profile, posts, workouts, stories, comments and uploaded media. This cannot be undone.</p>
+        <Button variant="danger" size="sm" className="mt-3" onClick={() => setDeleting(true)}>
+          <Trash2 className="size-4" /> Delete my account
+        </Button>
+      </div>
+
+      <Sheet open={deleting} onClose={() => setDeleting(false)} title="Delete account">
+        <div className="space-y-3 p-4">
+          <p className="text-sm text-muted">
+            Type <b className="text-fg">{me.username}</b> to confirm. Everything you&apos;ve shared will be removed for good.
+          </p>
+          <input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} className={inputClass} autoCapitalize="none" aria-label="Type your username to confirm" />
+          <Button
+            variant="danger"
+            className="w-full"
+            disabled={confirmText.trim().toLowerCase() !== me.username || busy}
+            loading={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                setActiveWorkout(null);
+                await data.deleteAccount();
+                toast("Your account has been deleted", "info");
+                router.replace("/");
+              } catch (e) {
+                toast(e instanceof Error ? e.message : "Couldn't delete account", "error");
+                setBusy(false);
+              }
+            }}
+          >
+            Permanently delete
+          </Button>
+        </div>
+      </Sheet>
     </div>
   );
 }

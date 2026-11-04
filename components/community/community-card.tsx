@@ -26,9 +26,11 @@ export function CommunityCard({ c, compact }: { c: Community; compact?: boolean 
           </span>
           {c.is_member ? (
             <span className="text-xs font-semibold text-accent-text">Joined ✓</span>
+          ) : c.my_role === "pending" ? (
+            <span className="text-xs font-semibold text-muted">Requested</span>
           ) : (
-            <Button size="sm" onClick={() => run(() => data.joinCommunity(c.id), `Welcome to ${c.name}!`)}>
-              Join
+            <Button size="sm" onClick={() => run(() => data.joinCommunity(c.id), c.is_private ? "Request sent" : `Welcome to ${c.name}!`)}>
+              {c.is_private ? "Request" : "Join"}
             </Button>
           )}
         </div>

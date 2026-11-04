@@ -50,7 +50,7 @@ function Item({ icon: I, label, onClick, danger }: { icon: React.ElementType; la
   );
 }
 
-export function PostMenu({ post, open, onClose }: { post: Post; open: boolean; onClose: () => void }) {
+export function PostMenu({ post, open, onClose, onDeleted }: { post: Post; open: boolean; onClose: () => void; onDeleted?: () => void }) {
   const me = useMe();
   const run = useAction();
   const toast = useToast();
@@ -74,8 +74,12 @@ export function PostMenu({ post, open, onClose }: { post: Post; open: boolean; o
               danger
               onClick={async () => {
                 if (!confirm("Delete this post? This can't be undone.")) return;
-                await run(() => data.deletePost(post.id), "Post deleted");
+                const ok = await run(async () => {
+                  await data.deletePost(post.id);
+                  return true;
+                }, "Post deleted");
                 onClose();
+                if (ok) onDeleted?.();
                 if (location.pathname.startsWith("/post/")) router.back();
               }}
             />

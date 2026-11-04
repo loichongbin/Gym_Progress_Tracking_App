@@ -2,13 +2,13 @@
 
 import { Heart, Send, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMe } from "@/components/providers/auth";
-import { useAction } from "@/components/providers/toast";
+import { useAction, useToast } from "@/components/providers/toast";
 import { Avatar } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/misc";
 import { useData } from "@/hooks/use-data";
-import { data } from "@/lib/data";
+import { data, realtime } from "@/lib/data";
 import { timeAgo } from "@/lib/time";
 import type { Comment, Post } from "@/lib/types";
 import { RichText } from "./rich-text";
@@ -52,22 +52,46 @@ function CommentItem({ c, post, onReply, isReply }: { c: Comment; post: Pick<Pos
 
 export function CommentThread({ post, autoFocus }: { post: Pick<Post, "id" | "user" | "caption" | "created_at">; autoFocus?: boolean }) {
   const me = useMe();
-  const run = useAction();
-  const { data: comments, loading } = useData(() => data.getComments(post.id), [post.id]);
+  const toast = useToast();
+  const { data: loaded, loading, reload } = useData(() => data.getComments(post.id), [post.id]);
+  const [optimistic, setOptimistic] = useState<Comment[]>([]);
   const [text, setText] = useState("");
   const [replyTo, setReplyTo] = useState<Comment | null>(null);
   const [sending, setSending] = useState(false);
   const input = useRef<HTMLInputElement>(null);
 
+  // Live thread: other people's new comments appear without a refresh.
+  useEffect(() => realtime.subscribeToComments(post.id, () => void reload()), [post.id, reload]);
+
+  // Merge optimistic (not yet confirmed) comments into the server list.
+  const comments = useMemo(() => {
+    const list = (loaded ?? []).map((c) => ({ ...c, replies: [...c.replies] }));
+    for (const o of optimistic) {
+      if (o.parent_id) list.find((c) => c.id === o.parent_id)?.replies.push(o);
+      else list.push(o);
+    }
+    return list;
+  }, [loaded, optimistic]);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!text.trim()) return;
+    const body = text.trim();
+    if (!body || sending) return;
+    const parentId = replyTo ? replyTo.parent_id ?? replyTo.id : null;
+    const temp: Comment = { id: `temp-${Date.now()}`, post_id: post.id, user: me, parent_id: parentId, body, created_at: new Date().toISOString(), replies: [] };
+    setOptimistic((o) => [...o, temp]);
+    setText("");
+    setReplyTo(null);
     setSending(true);
-    const ok = await run(() => data.addComment(post.id, text, replyTo?.id ?? null));
-    setSending(false);
-    if (ok) {
-      setText("");
-      setReplyTo(null);
+    try {
+      await data.addComment(post.id, body, parentId);
+      await reload();
+    } catch (err) {
+      setText(body); // give the text back so nothing is lost
+      toast(err instanceof Error ? err.message : "Couldn't post comment", "error");
+    } finally {
+      setOptimistic((o) => o.filter((c) => c.id !== temp.id));
+      setSending(false);
     }
   };
 

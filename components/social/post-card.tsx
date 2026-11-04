@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { Bookmark, Flame, Heart, MapPin, MessageCircle, MoreHorizontal, Send, Trophy, Users } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/providers/toast";
 import { Avatar } from "@/components/ui/avatar";
 import { Sheet } from "@/components/ui/sheet";
@@ -18,44 +18,55 @@ import { MediaCarousel } from "./media-carousel";
 import { PostMenu } from "./post-menu";
 import { RichText } from "./rich-text";
 
-export function PostCard({ post }: { post: Post }) {
+export function PostCard({ post, live }: { post: Post; live?: { likes: number; comments: number } }) {
   const toast = useToast();
-  const [liked, setLiked] = useState(post.liked_by_me);
-  const [likes, setLikes] = useState(post.likes_count);
-  const [saved, setSaved] = useState(post.saved_by_me);
+  // Server-synced engagement state, updated optimistically on interaction.
+  const [eng, setEng] = useState({ liked: post.liked_by_me, likes: post.likes_count, saved: post.saved_by_me, comments: post.comments_count });
+  const { liked, likes, saved, comments: commentCount } = eng;
   const [comments, setComments] = useState(false);
   const [menu, setMenu] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const pending = useRef(false);
+  const [deleted, setDeleted] = useState(false);
 
-  // Re-sync optimistic state when fresh data arrives from the service.
+  // Re-sync when fresh data arrives from the server.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLiked(post.liked_by_me);
-    setLikes(post.likes_count);
-    setSaved(post.saved_by_me);
-  }, [post.liked_by_me, post.likes_count, post.saved_by_me]);
+    setEng({ liked: post.liked_by_me, likes: post.likes_count, saved: post.saved_by_me, comments: post.comments_count });
+  }, [post.liked_by_me, post.likes_count, post.saved_by_me, post.comments_count]);
 
+  // Realtime counter updates (pushed by the feed's filtered posts subscription).
+  useEffect(() => {
+    if (!live || pending.current) return;
+    setEng((e) => ({ ...e, likes: live.likes, comments: live.comments }));
+  }, [live]);
+
+  /** Optimistic like with rollback on failure. Double-tap only ever likes. */
   const toggleLike = async (force?: boolean) => {
-    if (force && liked) return; // double-tap only likes, never unlikes
+    if (force && liked) return;
+    if (pending.current) return; // ignore taps while a request is in flight
     const next = !liked;
-    setLiked(next);
-    setLikes((n) => n + (next ? 1 : -1));
+    pending.current = true;
+    setEng((e) => ({ ...e, liked: next, likes: Math.max(0, e.likes + (next ? 1 : -1)) }));
     try {
-      await data.toggleLike(post.id);
-    } catch (e) {
-      setLiked(!next);
-      setLikes((n) => n + (next ? -1 : 1));
-      toast(e instanceof Error ? e.message : "Couldn't like post", "error");
+      await data.setLike(post.id, next);
+    } catch (err) {
+      setEng((e) => ({ ...e, liked: !next, likes: Math.max(0, e.likes + (next ? -1 : 1)) }));
+      toast(err instanceof Error ? err.message : "Couldn't like post", "error");
+    } finally {
+      pending.current = false;
     }
   };
 
   const toggleSave = async () => {
-    setSaved((s) => !s);
+    const next = !saved;
+    setEng((e) => ({ ...e, saved: next }));
     try {
-      const s = await data.toggleSave(post.id);
-      toast(s ? "Saved to your collection" : "Removed from saved", "info");
-    } catch {
-      setSaved((s) => !s);
+      await data.setSaved(post.id, next);
+      toast(next ? "Saved to your collection" : "Removed from saved", "info");
+    } catch (e) {
+      setEng((x) => ({ ...x, saved: !next }));
+      toast(e instanceof Error ? e.message : "Couldn't save post", "error");
     }
   };
 
@@ -70,6 +81,7 @@ export function PostCard({ post }: { post: Post }) {
   };
 
   const longCaption = post.caption.length > 140;
+  if (deleted) return null;
 
   return (
     <article className="border-b border-line pb-4 md:mb-6 md:overflow-hidden md:rounded-[var(--radius-card)] md:border md:bg-surface">
@@ -180,9 +192,9 @@ export function PostCard({ post }: { post: Post }) {
             )}
           </p>
         )}
-        {post.comments_count > 0 && (
+        {commentCount > 0 && (
           <button onClick={() => setComments(true)} className="text-sm text-muted">
-            View {post.comments_count === 1 ? "1 comment" : `all ${post.comments_count} comments`}
+            View {commentCount === 1 ? "1 comment" : `all ${commentCount} comments`}
           </button>
         )}
       </div>
@@ -190,7 +202,7 @@ export function PostCard({ post }: { post: Post }) {
       <Sheet open={comments} onClose={() => setComments(false)} title="Comments" full>
         <CommentThread post={post} />
       </Sheet>
-      <PostMenu post={post} open={menu} onClose={() => setMenu(false)} />
+      <PostMenu post={post} open={menu} onClose={() => setMenu(false)} onDeleted={() => setDeleted(true)} />
     </article>
   );
 }

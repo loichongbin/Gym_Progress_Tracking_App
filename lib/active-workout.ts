@@ -20,6 +20,11 @@ export interface DraftExercise {
   sets: DraftSet[];
 }
 export interface ActiveWorkout {
+  /** Idempotency key sent with "Finish": retries can never create duplicate workouts. */
+  client_request_id: string;
+  /** Set when editing an existing saved workout (its id and original end time). */
+  editing_id?: string;
+  ended_at?: string;
   title: string;
   category: string;
   notes: string;
@@ -44,6 +49,8 @@ function read(): ActiveWorkout | null {
   }
   return cache ?? null;
 }
+
+export const getActiveWorkout = () => read();
 
 export function setActiveWorkout(w: ActiveWorkout | null | ((prev: ActiveWorkout | null) => ActiveWorkout | null)) {
   const next = typeof w === "function" ? w(read()) : w;

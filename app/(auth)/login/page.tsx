@@ -1,18 +1,16 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Zap } from "lucide-react";
+import { MailCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { DemoNotice } from "@/components/demo-banner";
 import { useToast } from "@/components/providers/toast";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/misc";
-import { data, isDemoMode } from "@/lib/data";
-import { DEMO_EMAIL, DEMO_PASSWORD } from "@/lib/data/demo/seed";
+import { AppError, data } from "@/lib/data";
 
 const schema = z.object({
   email: z.email("Enter a valid email"),
@@ -24,23 +22,33 @@ export default function LoginPage() {
   const router = useRouter();
   const toast = useToast();
   const [error, setError] = useState<string | null>(null);
-  const { register, handleSubmit, setValue, formState } = useForm<Values>({ resolver: zodResolver(schema) });
+  const [unverified, setUnverified] = useState(false);
+  const [resending, setResending] = useState(false);
+  const { register, handleSubmit, formState, getValues } = useForm<Values>({ resolver: zodResolver(schema) });
 
   const onSubmit = async (v: Values) => {
     setError(null);
+    setUnverified(false);
     try {
       const me = await data.signIn(v.email, v.password);
-      toast(`Welcome back, ${me.full_name.split(" ")[0]} 💪`);
+      toast(`Welcome back, ${me.full_name.split(" ")[0] || me.username} 💪`);
       router.replace("/home");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sign in failed");
+      setUnverified(e instanceof AppError && e.code === "email_not_confirmed");
     }
   };
 
-  const demo = () => {
-    setValue("email", DEMO_EMAIL);
-    setValue("password", DEMO_PASSWORD);
-    handleSubmit(onSubmit)();
+  const resend = async () => {
+    setResending(true);
+    try {
+      await data.resendVerification(getValues("email"));
+      toast("Verification email sent — check your inbox", "info");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Couldn't resend the email", "error");
+    } finally {
+      setResending(false);
+    }
   };
 
   return (
@@ -54,22 +62,25 @@ export default function LoginPage() {
         <Field label="Password" error={formState.errors.password?.message}>
           <input {...register("password")} type="password" autoComplete="current-password" className={inputClass} placeholder="••••••••" />
         </Field>
-        {error && <p className="rounded-xl bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
+        <div className="-mt-1 text-right">
+          <Link href="/forgot-password" className="text-[13px] font-medium text-muted hover:text-fg">
+            Forgot password?
+          </Link>
+        </div>
+        {error && (
+          <div className="rounded-xl bg-danger/10 px-3 py-2 text-sm text-danger">
+            {error}
+            {unverified && (
+              <button type="button" onClick={resend} disabled={resending} className="mt-2 flex items-center gap-1.5 font-semibold text-fg underline-offset-4 hover:underline">
+                <MailCheck className="size-4" /> {resending ? "Sending…" : "Resend verification email"}
+              </button>
+            )}
+          </div>
+        )}
         <Button type="submit" size="lg" className="w-full" loading={formState.isSubmitting}>
           Log in
         </Button>
       </form>
-      {isDemoMode && (
-        <div className="mt-6 space-y-3">
-          <div className="flex items-center gap-3 text-xs text-subtle">
-            <span className="h-px flex-1 bg-line" /> or <span className="h-px flex-1 bg-line" />
-          </div>
-          <Button variant="secondary" size="lg" className="w-full" onClick={demo} disabled={formState.isSubmitting}>
-            <Zap className="size-4 text-accent-text" /> Explore as demo athlete (Alex)
-          </Button>
-          <DemoNotice />
-        </div>
-      )}
       <p className="mt-8 text-center text-sm text-muted">
         New to Spotter?{" "}
         <Link href="/signup" className="font-semibold text-fg underline-offset-4 hover:underline">

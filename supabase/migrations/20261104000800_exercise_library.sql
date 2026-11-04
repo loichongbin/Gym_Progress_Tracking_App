@@ -1,0 +1,47 @@
+-- =============================================================================
+-- Spotter · 008 · Predefined exercise library (system exercises: created_by = null)
+-- Users add their own on top (is_custom = true, created_by = their id).
+-- =============================================================================
+insert into public.exercises (exercise_name, muscle_group, equipment_type, exercise_description)
+values
+  ('Bench Press', 'Chest', 'Barbell', 'Lie on a flat bench and press the bar from mid-chest to lockout.'),
+  ('Incline Dumbbell Press', 'Chest', 'Dumbbell', 'Press dumbbells on a 30–45° incline to bias the upper chest.'),
+  ('Dumbbell Fly', 'Chest', 'Dumbbell', 'Arc the dumbbells wide with soft elbows, then squeeze them together.'),
+  ('Chest Dip', 'Chest', 'Bodyweight', 'Lean forward on parallel bars and lower until the shoulders are below the elbows.'),
+  ('Cable Crossover', 'Chest', 'Cable', 'Bring the cable handles together in front of the chest from a high anchor.'),
+  ('Push Up', 'Chest', 'Bodyweight', 'Lower the chest to the floor with a rigid plank, then press back up.'),
+  ('Deadlift', 'Back', 'Barbell', 'Hinge at the hips and stand up with the bar, keeping it close to the legs.'),
+  ('Lat Pulldown', 'Back', 'Cable', 'Pull the bar to the upper chest, driving the elbows down and back.'),
+  ('Seated Cable Row', 'Back', 'Cable', 'Row the handle to the stomach while keeping the torso upright.'),
+  ('Barbell Row', 'Back', 'Barbell', 'Hinge forward and row the bar to the lower ribs.'),
+  ('Pull Up', 'Back', 'Bodyweight', 'Hang from a bar and pull until the chin clears it.'),
+  ('Face Pull', 'Shoulders', 'Cable', 'Pull a rope towards the face with elbows high to train the rear delts.'),
+  ('Squat', 'Legs', 'Barbell', 'Back squat: sit down between the hips to depth and drive back up.'),
+  ('Front Squat', 'Legs', 'Barbell', 'Squat with the bar racked on the front delts and an upright torso.'),
+  ('Romanian Deadlift', 'Legs', 'Barbell', 'Hinge with soft knees to stretch the hamstrings, then stand tall.'),
+  ('Leg Press', 'Legs', 'Machine', 'Press the platform away while keeping the lower back on the pad.'),
+  ('Leg Extension', 'Legs', 'Machine', 'Extend the knees against the pad to isolate the quadriceps.'),
+  ('Hamstring Curl', 'Legs', 'Machine', 'Curl the pad towards the glutes to isolate the hamstrings.'),
+  ('Walking Lunge', 'Legs', 'Dumbbell', 'Step forward into a lunge, alternating legs as you travel.'),
+  ('Hip Thrust', 'Legs', 'Barbell', 'Drive the hips up with the upper back on a bench and squeeze the glutes.'),
+  ('Calf Raise', 'Legs', 'Machine', 'Rise onto the balls of the feet through a full range of motion.'),
+  ('Bulgarian Split Squat', 'Legs', 'Dumbbell', 'Rear foot elevated split squat for single-leg strength.'),
+  ('Shoulder Press', 'Shoulders', 'Dumbbell', 'Press dumbbells overhead from shoulder height.'),
+  ('Overhead Press', 'Shoulders', 'Barbell', 'Standing strict press of the barbell from the front rack to overhead.'),
+  ('Lateral Raise', 'Shoulders', 'Dumbbell', 'Raise the dumbbells out to the sides to shoulder height.'),
+  ('Rear Delt Fly', 'Shoulders', 'Dumbbell', 'Hinge forward and raise the dumbbells out to the sides.'),
+  ('Bicep Curl', 'Arms', 'Dumbbell', 'Curl the dumbbells while keeping the elbows by your sides.'),
+  ('Hammer Curl', 'Arms', 'Dumbbell', 'Curl with a neutral grip to train the brachialis and forearms.'),
+  ('Preacher Curl', 'Arms', 'Machine', 'Curl over a preacher pad to keep the upper arms fixed.'),
+  ('Tricep Pushdown', 'Arms', 'Cable', 'Push the cable attachment down until the elbows are fully extended.'),
+  ('Skull Crusher', 'Arms', 'Barbell', 'Lower the bar towards the forehead by bending the elbows, then extend.'),
+  ('Overhead Tricep Extension', 'Arms', 'Cable', 'Extend the elbows overhead to train the long head of the triceps.'),
+  ('Plank', 'Core', 'Bodyweight', 'Hold a straight-body position on the forearms.'),
+  ('Hanging Leg Raise', 'Core', 'Bodyweight', 'Hang from a bar and raise the legs with control.'),
+  ('Cable Crunch', 'Core', 'Cable', 'Kneel and crunch the rope towards the floor using the abs.'),
+  ('Kettlebell Swing', 'Full Body', 'Kettlebell', 'Hip-hinge swing driving the bell to chest height.'),
+  ('Clean and Press', 'Full Body', 'Barbell', 'Clean the bar to the shoulders, then press it overhead.'),
+  ('Treadmill Run', 'Cardio', 'Machine', 'Steady or interval running on a treadmill.'),
+  ('Rowing Machine', 'Cardio', 'Machine', 'Leg drive, lean back, then pull — repeat smoothly.'),
+  ('Stair Climber', 'Cardio', 'Machine', 'Continuous stair climbing for conditioning.')
+on conflict do nothing;
